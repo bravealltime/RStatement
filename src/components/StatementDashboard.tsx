@@ -10,6 +10,7 @@ interface DashboardProps {
 
 export function StatementDashboard({ data, onReset }: DashboardProps) {
     const [selectedMonth, setSelectedMonth] = useState<string>("all");
+    const [searchQuery, setSearchQuery] = useState<string>("");
 
     // Extract available months
     const availableMonths = useMemo(() => {
@@ -24,11 +25,26 @@ export function StatementDashboard({ data, onReset }: DashboardProps) {
         return Array.from(months).sort().reverse();
     }, [data.transactions]);
 
-    // Filter transactions based on selection
+    // Filter transactions based on selection AND search
     const filteredTransactions = useMemo(() => {
-        if (selectedMonth === "all") return data.transactions;
-        return data.transactions.filter(t => t.date.startsWith(selectedMonth));
-    }, [data.transactions, selectedMonth]);
+        let result = data.transactions;
+
+        // 1. Filter by Month
+        if (selectedMonth !== "all") {
+            result = result.filter(t => t.date.startsWith(selectedMonth));
+        }
+
+        // 2. Filter by Search Query
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            result = result.filter(t =>
+                t.description.toLowerCase().includes(query) ||
+                t.amount.toString().includes(query)
+            );
+        }
+
+        return result;
+    }, [data.transactions, selectedMonth, searchQuery]);
 
     // Calculate totals based on FILTERED transactions
     const totalIncome = filteredTransactions
@@ -68,30 +84,47 @@ export function StatementDashboard({ data, onReset }: DashboardProps) {
                             {data.bankName} {data.accountNumber ? `(${data.accountNumber})` : ""}
                         </p>
                     </div>
-                    <div className="flex gap-2">
-                        {/* Month Filter */}
-                        <select
-                            className="btn"
-                            style={{
-                                background: "white",
-                                color: "var(--foreground)",
-                                border: "1px solid #e2e8f0",
-                                cursor: "pointer",
-                                fontSize: "1rem",
-                                paddingRight: "2rem"
-                            }}
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                        >
-                            <option value="all">ทั้งหมด (All Months)</option>
-                            {availableMonths.map(m => (
-                                <option key={m} value={m}>{formatMonthOption(m)}</option>
-                            ))}
-                        </select>
+                    <div className="flex flex-col gap-2 align-end mobile-full">
+                        <div className="flex gap-2 mobile-stack">
+                            {/* Search Input */}
+                            <input
+                                type="text"
+                                placeholder="🔍 ค้นหา (ชื่อ/เลขบัญชี)"
+                                className="btn"
+                                style={{
+                                    background: "white",
+                                    border: "1px solid #e2e8f0",
+                                    color: "var(--foreground)",
+                                    minWidth: "200px"
+                                }}
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
 
-                        <button className="btn btn-primary" onClick={onReset} style={{ background: "var(--muted)" }}>
-                            เปลี่ยนไฟล์
-                        </button>
+                            {/* Month Filter */}
+                            <select
+                                className="btn"
+                                style={{
+                                    background: "white",
+                                    color: "var(--foreground)",
+                                    border: "1px solid #e2e8f0",
+                                    cursor: "pointer",
+                                    fontSize: "1rem",
+                                    paddingRight: "2rem"
+                                }}
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(e.target.value)}
+                            >
+                                <option value="all">ทุกเดือน (All)</option>
+                                {availableMonths.map(m => (
+                                    <option key={m} value={m}>{formatMonthOption(m)}</option>
+                                ))}
+                            </select>
+
+                            <button className="btn btn-primary" onClick={onReset} style={{ background: "var(--muted)" }}>
+                                เปลี่ยนไฟล์
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -109,6 +142,11 @@ export function StatementDashboard({ data, onReset }: DashboardProps) {
 
             {/* Summary Cards */}
             <div className="flex gap-4 mb-4 mobile-stack" style={{ flexWrap: "wrap" }}>
+                <div className="card flex-col items-center justify-center mobile-full" style={{ flex: 1, minWidth: "150px", background: "#f8fafc", border: "1px solid #cbd5e1" }}>
+                    <h3 style={{ color: "var(--muted)", fontSize: "1rem" }}>จำนวนรายการ</h3>
+                    <h2 style={{ fontSize: "1.5rem", color: "var(--foreground)" }}>{filteredTransactions.length}</h2>
+                </div>
+
                 <div className="card flex-col items-center justify-center mobile-full" style={{ flex: 1, minWidth: "200px", background: "var(--success-bg)", borderColor: "var(--success)" }}>
                     <h3 style={{ color: "var(--success)", fontSize: "1.1rem" }}>รายรับรวม</h3>
                     <h2 style={{ fontSize: "1.75rem", color: "var(--success)" }}>+{formatCurrency(totalIncome)}</h2>
