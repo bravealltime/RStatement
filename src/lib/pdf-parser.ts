@@ -76,6 +76,23 @@ function parseKTB(text: string): StatementData {
     // Normalize spaces: remove newlines and multiple spaces
     const cleanText = text.replace(/\s+/g, " ");
 
+    // Extract Header Info
+    // 1. Account Name
+    const nameMatch = cleanText.match(/ชื่อบัญชี\s+(.*?)\s+ประเภทบัญชี/);
+    const accountOwner = nameMatch ? nameMatch[1].trim() : undefined;
+
+    // 2. Account Number
+    const accNumMatch = cleanText.match(/เลขที่บัญชี\s+(\d{3}-?\d{1}-?\d{5}-?\d{1}|\d{10})/);
+    const accountNumber = accNumMatch ? accNumMatch[1] : undefined;
+
+    // 3. Branch
+    const branchMatch = cleanText.match(/สาขา\s+(.*?)\s+เลขที่บัญชี/);
+    const branch = branchMatch ? branchMatch[1].trim() : undefined;
+
+    // 4. Address
+    const addrMatch = cleanText.match(/ที่อยู่ปัจจุบัน\s+(.*?)\s+ที่อยู่สาขา/);
+    const address = addrMatch ? addrMatch[1].trim() : undefined;
+
     // Regex to find start of lines with Date (DD/MM/YY)
     // Capture group 1: Date
     // Capture group 2: Content until next date or end of text
@@ -91,6 +108,13 @@ function parseKTB(text: string): StatementData {
     for (const match of matches) {
         const dateStr = match[1];
         const content = match[2];
+
+        // GUARD CLAUSE: Skip header lines
+        if (content.includes("ชื่อบัญชี") ||
+            content.includes("ที่อยู่ปัจจุบัน") ||
+            content.includes("วันที่ส่งคำขอ")) {
+            continue;
+        }
 
         // Extract Amounts (looking for x,xxx.xx pattern)
         const amountMatches = content.match(/[\d,]+\.\d{2}/g);
@@ -173,6 +197,10 @@ function parseKTB(text: string): StatementData {
 
     return {
         bankName: "ธนาคารกรุงไทย (Krungthai)",
+        accountNumber,
+        accountOwner,
+        branch,
+        address,
         transactions,
         rawText: text
     };

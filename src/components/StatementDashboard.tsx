@@ -43,6 +43,17 @@ export function StatementDashboard({ data, onReset }: DashboardProps) {
                 </button>
             </header>
 
+            {(data.accountOwner || data.branch || data.address) && (
+                <div className="card mb-4" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                    <h3 style={{ fontSize: "1.1rem", marginBottom: "0.5rem", color: "var(--foreground)" }}>ข้อมูลบัญชี</h3>
+                    <div className="flex flex-col gap-2" style={{ fontSize: "0.95rem", color: "var(--muted)" }}>
+                        {data.accountOwner && <p><strong>ชื่อบัญชี:</strong> {data.accountOwner}</p>}
+                        {data.branch && <p><strong>สาขา:</strong> {data.branch}</p>}
+                        {data.address && <p><strong>ที่อยู่:</strong> {data.address}</p>}
+                    </div>
+                </div>
+            )}
+
             {/* Summary Cards */}
             <div className="flex gap-4 mb-4 mobile-stack" style={{ flexWrap: "wrap" }}>
                 <div className="card flex-col items-center justify-center mobile-full" style={{ flex: 1, minWidth: "200px", background: "var(--success-bg)", borderColor: "var(--success)" }}>

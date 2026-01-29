@@ -11,6 +11,9 @@ export interface Transaction {
 export interface StatementData {
     bankName: string;
     accountNumber?: string;
+    accountOwner?: string; // New
+    branch?: string; // New
+    address?: string; // New
     period?: string;
     transactions: Transaction[];
     rawText?: string;
