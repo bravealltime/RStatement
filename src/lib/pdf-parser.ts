@@ -88,7 +88,26 @@ function parseKBank(text: string): StatementData {
     for (const match of matches) {
         const dateStr = match[1]; // 01-07-25
         const time = match[2];    // 08:53
-        const content = match[3]; // K PLUS 1,255.41 ... 16.00
+        let content = match[3];   // Content
+
+        // TRUNCATE GARBAGE/FOOTERS from content
+        // The last match often captures the summary table and footer
+        const stopPhrases = [
+            "รวมถอนเงิน",
+            "รวมฝากเงิน",
+            "ยอดยกไป",
+            "ออกโดย K PLUS",
+            "หน้าที่",
+            "Page"
+        ];
+
+        for (const phrase of stopPhrases) {
+            if (content.includes(phrase)) {
+                content = content.split(phrase)[0];
+            }
+        }
+
+        if (!content.trim()) continue;
 
         // Extract numbers
         const numbers = content.match(/[\d,]+\.\d{2}/g);
