@@ -13,45 +13,54 @@ export function TransactionCard({ transaction }: TransactionCardProps) {
         <div
             className="card flex items-center justify-between"
             style={{
-                marginBottom: "1rem",
+                marginBottom: "0.75rem",
                 borderLeft: isIncome ? "6px solid var(--success)" : "6px solid var(--danger)",
+                gap: "1rem"
             }}
         >
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3" style={{ flex: 1, minWidth: 0 }}>
                 <div
                     style={{
                         background: isIncome ? "var(--success-bg)" : "var(--danger-bg)",
                         color: isIncome ? "var(--success)" : "var(--danger)",
-                        padding: "12px",
+                        padding: "10px",
                         borderRadius: "50%",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        flexShrink: 0 // Prevent icon from shrinking
                     }}
                 >
-                    {isIncome ? <ArrowDownLeft size={32} /> : <ArrowUpRight size={32} />}
+                    {isIncome ? <ArrowDownLeft size={24} /> : <ArrowUpRight size={24} />}
                 </div>
-                <div>
-                    <h3 style={{ fontSize: "1.25rem", marginBottom: "0.25rem" }}>
+                <div style={{ minWidth: 0 }}> {/* Container for text truncation */}
+                    <h3 style={{
+                        fontSize: "1.1rem",
+                        marginBottom: "0.1rem",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis"
+                    }}>
                         {transaction.description}
                     </h3>
-                    <p style={{ color: "var(--muted)", fontSize: "1rem" }}>
+                    <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>
                         {transaction.time || "00:00"} น.
                     </p>
                 </div>
             </div>
 
-            <div className="text-center">
+            <div className="text-right" style={{ flexShrink: 0 }}>
                 <h2
                     style={{
-                        fontSize: "1.5rem",
+                        fontSize: "1.25rem",
                         color: isIncome ? "var(--success)" : "var(--danger)",
                         fontWeight: "bold",
+                        marginBottom: 0
                     }}
                 >
                     {isIncome ? "+" : "-"}{formatCurrency(transaction.amount)}
                 </h2>
-                <p style={{ fontSize: "0.9rem", color: "#888" }}>บาท</p>
+                <p style={{ fontSize: "0.8rem", color: "#888" }}>บาท</p>
             </div>
         </div>
     );
