@@ -33,17 +33,16 @@ export function TransactionCard({ transaction }: TransactionCardProps) {
                 >
                     {isIncome ? <ArrowDownLeft size={24} /> : <ArrowUpRight size={24} />}
                 </div>
-                <div style={{ minWidth: 0 }}> {/* Container for text truncation */}
+                <div style={{ minWidth: 0 }}>
                     <h3 style={{
-                        fontSize: "1.1rem",
+                        fontSize: "0.95rem", // Reduce font slightly to fit long text
                         marginBottom: "0.1rem",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis"
+                        lineHeight: "1.4", // Improve readability
+                        wordBreak: "break-word" // Ensure long numbers wrap
                     }}>
                         {transaction.description}
                     </h3>
-                    <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>
+                    <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
                         {transaction.time || "00:00"} น.
                     </p>
                 </div>
