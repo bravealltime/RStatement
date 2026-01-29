@@ -1,5 +1,18 @@
 import { Transaction, StatementData } from "./types";
 
+// Polyfill for Promise.withResolvers (needed for older Safari/iOS)
+if (typeof Promise.withResolvers === 'undefined') {
+    // @ts-expect-error - Polyfill
+    Promise.withResolvers = function () {
+        let resolve, reject;
+        const promise = new Promise((res, rej) => {
+            resolve = res;
+            reject = rej;
+        });
+        return { promise, resolve, reject };
+    };
+}
+
 export async function parseStatement(file: File, password?: string): Promise<StatementData> {
     // Dynamic import to avoid SSR issues with canvas/worker
     const pdfjsLib = await import("pdfjs-dist");
