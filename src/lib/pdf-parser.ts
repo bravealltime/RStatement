@@ -84,56 +84,91 @@ function parseKTB(text: string): StatementData {
     const matches = cleanText.matchAll(lineRegex);
     let idCounter = 1;
 
+    // Pass 1: Extract raw data
+    // We store candidates to analyze balance changes
+    const rawTransactions: any[] = [];
+
     for (const match of matches) {
-        const dateStr = match[1]; // e.g. 01/10/68
-        const content = match[2]; // e.g. "โอนเงินออก ... 1,000.00 ... 08:31"
+        const dateStr = match[1];
+        const content = match[2];
 
-        // 1. Extract Time (HH:mm)
-        const timeMatch = content.match(/(\d{2}:\d{2})/);
-        const time = timeMatch ? timeMatch[1] : undefined;
-
-        // 2. Extract Amounts (looking for 1,000.00 pattern)
+        // Extract Amounts (looking for x,xxx.xx pattern)
         const amountMatches = content.match(/[\d,]+\.\d{2}/g);
 
         if (amountMatches && amountMatches.length > 0) {
-            // The first amount found is typically the transaction amount
+            // First number is Transaction Amount
             const rawAmount = amountMatches[0].replace(/,/g, "");
             const amount = parseFloat(rawAmount);
 
-            // 3. Determine Type (Income/Expense)
-            const isIncome = content.includes("โอนเงินเข้า") ||
-                content.includes("ฝากเงิน") ||
-                content.includes("รับโอน") ||
-                content.includes("เงินโอนเข้า");
+            // Last number is likely the Balance
+            const rawBalance = amountMatches[amountMatches.length - 1].replace(/,/g, "");
+            const balance = parseFloat(rawBalance);
 
-            // Default to expense unless explicit income keywords found
-            // (Common expense keywords: โอนเงินออก, ถอนเงิน, จ่าย, หักบัญชี)
-            const type: 'income' | 'expense' = isIncome ? 'income' : 'expense';
+            // Extract Time
+            const timeMatch = content.match(/(\d{2}:\d{2})/);
+            const time = timeMatch ? timeMatch[1] : undefined;
 
-            // 4. Extract Description
-            // Take text BEFORE the first amount
-            // Also remove the time if it appears before amount (unlikely but safe to check)
+            // Extract Description
             let description = content.split(amountMatches[0])[0].trim();
-            // remove trailing time if present in description part
             description = description.replace(/\d{2}:\d{2}/, "").trim();
-            // remove common garbage or codes if needed (e.g. (IORSWT)) - keep for now as detail
 
-            // 5. Convert Date (Thai Year -> AD)
-            // e.g. 01/10/68 -> 2568 -> 2025
+            // Convert Date
             const [d, m, y] = dateStr.split('/');
             const yearTh = 2500 + parseInt(y); // 68 -> 2568
             const yearAd = yearTh - 543;
             const isoDate = `${yearAd}-${m}-${d}`;
 
-            transactions.push({
-                id: (idCounter++).toString(),
-                date: isoDate,
-                time,
-                description,
-                amount,
-                type
+            // Initial Keyword Guess (Fallback)
+            const isIncomeKeyword = content.includes("โอนเงินเข้า") ||
+                content.includes("ฝากเงิน") ||
+                content.includes("รับโอน") ||
+                content.includes("เงินโอนเข้า") ||
+                content.includes("ดอกเบี้ย") ||
+                content.includes("เข้าบัญชี") ||
+                content.includes("คืนเงิน");
+
+            rawTransactions.push({
+                isoDate, time, description, amount, balance, isIncomeKeyword
             });
         }
+    }
+
+    // Pass 2: Determine Type using Balance Logic
+    for (let i = 0; i < rawTransactions.length; i++) {
+        const curr = rawTransactions[i];
+        let type: 'income' | 'expense' = 'expense'; // Default
+
+        if (i > 0) {
+            const prev = rawTransactions[i - 1];
+            // Calculate potential balances
+            const ifIncome = prev.balance + curr.amount;
+            const ifExpense = prev.balance - curr.amount;
+
+            // Check with small epsilon for float precision
+            if (Math.abs(ifIncome - curr.balance) < 0.05) {
+                type = 'income';
+            } else if (Math.abs(ifExpense - curr.balance) < 0.05) {
+                type = 'expense';
+            } else {
+                // Math doesn't match? Fallback to keyword
+                type = curr.isIncomeKeyword ? 'income' : 'expense';
+            }
+        } else {
+            // First item: Rely on Keyword
+            type = curr.isIncomeKeyword ? 'income' : 'expense';
+
+            // Or try to look ahead? (If Next Balance confirms Next Move)
+            // But keep it simple for now.
+        }
+
+        transactions.push({
+            id: (idCounter++).toString(),
+            date: curr.isoDate,
+            time: curr.time,
+            description: curr.description,
+            amount: curr.amount,
+            type
+        });
     }
 
     return {
