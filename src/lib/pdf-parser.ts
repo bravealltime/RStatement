@@ -13,46 +13,28 @@ if (typeof Promise.withResolvers === 'undefined') {
     };
 }
 
+// ... (Promise polyfill remains)
+
 export async function parseStatement(file: File, password?: string): Promise<StatementData> {
-    // Dynamic import to avoid SSR issues with canvas/worker
+    // Dynamic import
     const pdfjsLib = await import("pdfjs-dist");
 
-    console.log("PDFJS Version:", pdfjsLib.version);
-
     // Set worker
-    // Use a fixed version 4.10.38 for stability or matched version
     pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
-    const arrayBuffer = await file.arrayBuffer();
-    const data = new Uint8Array(arrayBuffer);
-    console.log("Attempting to load document. Password provided:", !!password);
-
     try {
+        const arrayBuffer = await file.arrayBuffer();
+        const data = new Uint8Array(arrayBuffer);
+
         const loadingTask = pdfjsLib.getDocument({
             data: data,
             password: password
         });
 
-        loadingTask.onPassword = (updatePassword: (password: string) => void, reason: number) => {
-            console.log("PDFJS onPassword triggered. Reason:", reason);
-
-            if (reason === 1) { // NEED_PASSWORD
-                // Only provide if we haven't failed already? 
-                // Actually, if we provided it in constructor, reason shouldn't be 1 unless it was ignored.
-                updatePassword(password || "");
-            } else { // reason === 2 (INCORRECT_PASSWORD)
-                console.error("Password incorrect. Stopping.");
-                // create a specific error to catch later
-                throw new Error("Password incorrect");
-            }
-        };
-
         const pdf = await loadingTask.promise;
-        console.log("Document loaded successfully. Pages:", pdf.numPages);
-
         let fullText = "";
 
-        // Extract text from all pages
+        // Extract text
         for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
@@ -60,15 +42,170 @@ export async function parseStatement(file: File, password?: string): Promise<Sta
             fullText += pageText + "\n";
         }
 
-        console.log("Extracted Text Start:\n", fullText.substring(0, 500));
-        console.log("Extracted Text End:\n", fullText.substring(fullText.length - 500));
+        console.log("Raw text start:", fullText.substring(0, 100));
 
-        return parseKTB(fullText);
+        // Detection Logic
+        if (fullText.includes("K PLUS") || fullText.includes("สาขาเจ้าของบัญชี") || fullText.match(/\d{2}-\d{2}-\d{2}/)) {
+            return parseKBank(fullText);
+        } else {
+            return parseKTB(fullText);
+        }
+
     } catch (e: any) {
-        console.error("PDFJS Error:", e.name, e.message, e);
+        console.error("PDF Parsing Error:", e);
         throw e;
     }
 }
+
+function parseKBank(text: string): StatementData {
+    const transactions: Transaction[] = [];
+    const cleanText = text.replace(/\s+/g, " ");
+
+    // Header Extraction
+    const bankName = "ธนาคารกสิกรไทย (KBank)";
+
+    // Account No: 035-1-89304-4 (Look for pattern X-X-X-X or XX-X-X-X)
+    const accNumMatch = cleanText.match(/\d{3}-\d{1}-\d{5}-\d{1}/);
+    const accountNumber = accNumMatch ? accNumMatch[0] : undefined;
+
+    // Account Name: "ชื่อบัญชี ... สาขา" or similar
+    // KBank text often: "ชื่อบัญชี นาย xxx ... x/x/x(0847) สาขา..."
+    // Strategy: Look for "ชื่อบัญชี" capture usually until number or address
+    const nameMatch = cleanText.match(/ชื่อบัญชี\s+(.*?)\s+(?=\d{3}\/|ถ\.|ต\.|อ\.|จ\.)/);
+    const accountOwner = nameMatch ? nameMatch[1].trim() : undefined;
+
+    // Branch
+    const branchMatch = cleanText.match(/สาขา(.*?)\s+\d{3}-\d{1}-/);
+    const branch = branchMatch ? "สาขา" + branchMatch[1].trim() : undefined;
+
+    // Line Regex: 01-07-25 ...
+    const lineRegex = /(\d{2}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(.*?)(?=\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}|$)/g;
+    const matches = cleanText.matchAll(lineRegex);
+
+    let idCounter = 1;
+    const rawTransactions: any[] = [];
+
+    for (const match of matches) {
+        const dateStr = match[1]; // 01-07-25
+        const time = match[2];    // 08:53
+        const content = match[3]; // K PLUS 1,255.41 ... 16.00
+
+        // Extract numbers
+        const numbers = content.match(/[\d,]+\.\d{2}/g);
+
+        if (numbers && numbers.length >= 2) {
+            // KBank Format: Date Time Channel Balance Description Amount
+            // OR: Date Time Channel [Description] Balance [Description] Amount ?
+            // Based on user log: "K PLUS 1,255.41 ... 16.00"
+            // The FIRST large number is often Balance. The LAST is Amount.
+            // Wait, let's verify if Balance comes first.
+            // Example: "01-07-25 08:53 K PLUS 1,255.41 ..."
+            // Yes, Balance is early. Amount is at end.
+
+            const rawBalance = numbers[0].replace(/,/g, "");
+            // Last number is Amount
+            const rawAmount = numbers[numbers.length - 1].replace(/,/g, "");
+
+            const balance = parseFloat(rawBalance);
+            const amount = parseFloat(rawAmount);
+
+            // Refine Description
+            // Remove the amounts from content
+            let description = content;
+            numbers.forEach(num => {
+                description = description.replace(num, "");
+            });
+            // Clean up garbage
+            description = description.replace("K PLUS", "").replace("ชำระเงิน", "").replace("โอนเงิน", "").replace("รับโอนเงิน", "").trim();
+            // Remove extra spaces
+            description = description.replace(/\s+/g, " ");
+
+            // Date Convert: 01-07-25 -> 2025-07-01
+            // KBank uses AD years (2025 -> 25)
+            const [d, m, y] = dateStr.split('-');
+            const yearFull = "20" + y;
+            const isoDate = `${yearFull}-${m}-${d}`;
+
+            rawTransactions.push({
+                isoDate, time, description, amount, balance
+            });
+        }
+    }
+
+    // Determine Type (Income/Expense) via Balance Logic
+    for (let i = 0; i < rawTransactions.length; i++) {
+        const curr = rawTransactions[i];
+        let type: 'income' | 'expense' = 'expense';
+
+        // Check Previous Balance
+        if (i < rawTransactions.length - 1) {
+            // KBank order is usually Chronological (Oldest -> Newest) ??
+            // User log: 01-07 (Row 1), 01-07 (Row 2).. 02-07..
+            // Yes, Chronological.
+            // So: Prev Balance (+/-) Amount = Current Balance
+            // NO. The list in PDF is top-down.
+            // Row 0: Bal 1255.41. Prev was 1271.41.
+            // So: PrevBalance - Amount = CurrBalance -> Expense
+            // PrevBalance + Amount = CurrBalance -> Income
+
+            // Wait, "Previous" in the array loop means the row BEFORE.
+            // But what about the First row? We need "Balance Forward" (ยอดยกมา).
+            // It might be hard to parse Balance Forward reliably.
+
+            // ALTERNATIVE: Look at Current and NEXT?
+            // Row 0: Bal 1255.41. Row 1: Bal 1180.41.
+            // 1255.41 -> 1180.41 (Decreased by 75).
+            // Row 1 amount is 75. So Row 1 was Expense.
+
+            // Actually, let's stick to: "Compare with Previous Row's Balance".
+            // If i=0, we can't check unless we parsed "Balance Forward".
+            // Fallback for i=0: Keywords?
+        }
+
+        // Let's implement looking at Previous Row (if exists)
+        if (i > 0) {
+            const prev = rawTransactions[i - 1];
+            const diff = curr.balance - prev.balance;
+
+            // If Balance INCREASED -> Income
+            if (diff > 0.01) type = 'income';
+            else type = 'expense';
+
+            // Verify with Amount if close enough?
+            // if (Math.abs(Math.abs(diff) - curr.amount) > 1.0) { ... warning ... }
+        } else {
+            // Processing First Item
+            // Heuristic: If description implies positive? 
+            // Or try to deduce from Next Item?
+            // If Next Bal < Curr Bal, then Next was expense. Doesn't help Curr.
+
+            // Use Keywords for First Item Fallback
+            if (curr.description.includes("รับโอน") || curr.description.includes("ได้รับ")) {
+                type = 'income';
+            }
+        }
+
+        transactions.push({
+            id: (idCounter++).toString(),
+            date: curr.isoDate,
+            time: curr.time,
+            description: curr.description,
+            amount: curr.amount,
+            type
+        });
+    }
+
+
+    return {
+        bankName,
+        accountNumber,
+        accountOwner,
+        branch,
+        transactions,
+        rawText: text
+    };
+}
+
 
 function parseKTB(text: string): StatementData {
     const transactions: Transaction[] = [];
