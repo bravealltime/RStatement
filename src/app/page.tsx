@@ -69,7 +69,7 @@ export default function Home() {
 
     // Timeout wrapper to prevent hanging
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Timeout: Parsing took too long")), 10000)
+      setTimeout(() => reject(new Error("Timeout: Parsing took too long")), 60000)
     );
 
     try {
